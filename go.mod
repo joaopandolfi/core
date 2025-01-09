@@ -1,4 +1,4 @@
-module github.com/agent-api/core/v0
+module github.com/agent-api/core
 
 go 1.23.3
 

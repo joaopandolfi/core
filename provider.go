@@ -1,8 +1,8 @@
 package core
 
 import (
-	"github.com/agent-api/core/v0/message"
-	"github.com/agent-api/core/v0/tool"
+	"github.com/agent-api/core/message"
+	"github.com/agent-api/core/tool"
 
 	"context"
 )

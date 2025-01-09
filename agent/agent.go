@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/agent-api/core/v0"
-	"github.com/agent-api/core/v0/message"
-	"github.com/agent-api/core/v0/tool"
+	"github.com/agent-api/core"
+	"github.com/agent-api/core/message"
+	"github.com/agent-api/core/tool"
 )
 
 // Agent represents an AI agent with its configuration and state
