@@ -35,7 +35,7 @@ func (a *Agent) AddTool(tool tool.Tool) error {
 		return errors.New("tool must have a name")
 	}
 
-	if tool.Function == nil {
+	if tool.WrappedFunction == nil {
 		return errors.New("tool must have a function")
 	}
 

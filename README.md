@@ -6,4 +6,4 @@ and working with various LLM providers.
 
 ---
 
-Agent-api is still a work in progress and the API may change unexpectedly
+Agent-api is still a work in progress and the API may change unexpectedly.
