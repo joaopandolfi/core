@@ -1,59 +1,62 @@
 package core
 
 import (
-	"github.com/agent-api/core/message"
-	"github.com/agent-api/core/tool"
-
 	"context"
+
+	"github.com/agent-api/core/message"
+	"github.com/agent-api/core/model"
+	"github.com/agent-api/core/tool"
 )
 
-// ProviderCapabilities represents what features a provider supports
-type ProviderCapabilities struct {
-	MaxTokens         int
-	SupportsStreaming bool
-	SupportsTools     bool
-	SupportsFunctions bool
-	SupportsImages    bool
-	DefaultModel      string
-	AvailableModels   []string
+type GenerateOptions struct {
+	// The Messages in a given generation request
+	Messages []message.Message
+
+	// The Tools available to an LLM
+	Tools []tool.Tool
+
+	// Controls generation randomness (0.0-1.0)
+	Temperature float64
+
+	// Nucleus sampling parameter
+	TopP float64
+
+	// Maximum tokens to generate
+	MaxTokens int
+
+	// Sequences that will stop generation
+	StopSequences []string
+
+	// Penalty for token presence
+	PresencePenalty float64
+
+	// Penalty for token frequency
+	FrequencyPenalty float64
 }
 
-// Provider is the interface that all agent-api LLM providers must implement
+// Provider is the interface that all agent-api LLM providers must implement.
 type Provider interface {
-	// GetCapabilities returns what features this provider supports
-	GetCapabilities(ctx context.Context) (*ProviderCapabilities, error)
+	// GetCapabilities returns what features this provider supports through a
+	// core.Capabilities struct. A provider may return an error if it cannot
+	// construct or query for its capabilities.
+	GetCapabilities(ctx context.Context) (*Capabilities, error)
 
-	// GenerateResponse generates a response given a context and messages
-	GenerateResponse(ctx context.Context, messages []message.Message) (*message.Message, error)
+	// UseModel takes a context and a model string ID (i.e., "qwen2.5") and configuration
+	// options through a core.ModelKnobs struct. It returns:
+	//
+	// 1. An "ok" boolean defining if the provider supports the given model by
+	//    the given options.
+	// 2. The constructed core.Model itself.
+	// 3. An error.
+	//
+	// A provider implementation may choose to return (true, nil, error) where
+	// some pre-check, pre-authentication, or query to the API failed causing an
+	// error despite the Model itself being supported.
+	UseModel(ctx context.Context, model *model.Model) error
 
-	// GenerateWithTools generates a response that can use tools
-	GenerateWithTools(ctx context.Context, messages []message.Message, tools []tool.Tool) (*message.Message, error)
+	// Generate uses the provider to generate a new message given the core.GenerateOptions
+	Generate(ctx context.Context, opts *GenerateOptions) (*message.Message, error)
 
-	// GenerateStream streams the response token by token
-	GenerateStream(ctx context.Context, messages []message.Message, opts *InferenceOptions) (<-chan *message.Message, <-chan error)
-
-	// GenerateStreamWithTools streams a response with tools token by token
-	GenerateStreamWithTools(ctx context.Context, messages []message.Message, tools []tool.Tool, opts *InferenceOptions) (<-chan *message.Message, <-chan error)
-
-	// ValidatePrompt checks if a prompt is valid for the provider
-	ValidatePrompt(ctx context.Context, messages []message.Message) error
-
-	// EstimateTokens estimates the number of tokens in a message
-	EstimateTokens(ctx context.Context, message string) (int, error)
-
-	// GetModelList returns available models for this provider
-	GetModelList(ctx context.Context) ([]string, error)
-}
-
-// InferenceOptions contains parameters for LLM generation
-type InferenceOptions struct {
-	Temperature      float64  // Controls randomness (0.0-1.0)
-	TopP             float64  // Nucleus sampling parameter
-	MaxTokens        int      // Maximum tokens to generate
-	StopSequences    []string // Sequences that will stop generation
-	Model            string   // Specific model to use (if provider supports multiple)
-	Stream           bool     // Whether to stream the response
-	SystemPrompt     string   // System prompt to use
-	PresencePenalty  float64  // Penalty for token presence
-	FrequencyPenalty float64  // Penalty for token frequency
+	// Generate uses the provider to stream a new message channel given the core.GenerateOptions
+	GenerateStream(ctx context.Context, opts *GenerateOptions) (<-chan *message.Message, <-chan error)
 }
