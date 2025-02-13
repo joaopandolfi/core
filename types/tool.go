@@ -1,4 +1,4 @@
-package tool
+package types
 
 import (
 	"context"
@@ -15,7 +15,7 @@ type Tool struct {
 	// The description of the tool
 	Description string
 
-	// WrappedFunction is the in-code function to be called by the AI agent
+	// WrappedToolFunction is the in-code function to be called by the AI agent
 	// when using this tool "wrapped" by WrapFunction.
 	//
 	// A tool's function expects 2 arguments: a context and a byte slice.
@@ -23,19 +23,19 @@ type Tool struct {
 	// function will then automatically unmarshal those arguments to the underlying
 	// function.
 	//
-	// WrappedFunction should have 2 returns: an interface and an error. The interface
+	// WrappedToolFunction should have 2 returns: an interface and an error. The interface
 	// may be anything defined by the wrapped function (a struct, a string, a number, etc.).
-	WrappedFunction func(ctx context.Context, args []byte) (interface{}, error)
+	WrappedToolFunction func(ctx context.Context, args []byte) (interface{}, error)
 
 	// JSONSchema is the raw JSON schema data as a byte slice that will be provided
 	// to a tool calling LLM for argument validation.
 	JSONSchema []byte
 }
 
-// WrapFunction dynamically, at runtime, converts the input function to a "WrappedFunction"
-// that can be used as part of Tool.WrappedFunction - i.e., a function of type:
+// WrapToolFunction dynamically, at runtime, converts the input function to a "WrappedToolFunction"
+// that can be used as part of Tool.WrappedToolFunction - i.e., a function of type:
 // func(context.Context []byte) (interface{}, error)
-func WrapFunction(fn interface{}) func(context.Context, []byte) (interface{}, error) {
+func WrapToolFunction(fn interface{}) (func(context.Context, []byte) (interface{}, error), error) {
 	fnValue := reflect.ValueOf(fn)
 
 	if fnValue.Kind() != reflect.Func {
@@ -82,5 +82,5 @@ func WrapFunction(fn interface{}) func(context.Context, []byte) (interface{}, er
 		}
 
 		return result, errResult
-	}
+	}, nil
 }

@@ -2,11 +2,11 @@ package agent
 
 import (
 	"github.com/agent-api/core"
-	"github.com/agent-api/core/tool"
+	"github.com/agent-api/core/types"
 )
 
-// AgentConfig holds configuration for agent initialization
-type AgentConfig struct {
+// NewAgentConfig holds configuration for agent initialization
+type NewAgentConfig struct {
 	// The core.Provider this agent will use
 	Provider core.Provider
 
@@ -14,7 +14,7 @@ type AgentConfig struct {
 	MaxSteps int
 
 	// Initial set of tools
-	Tools []tool.Tool
+	Tools []types.Tool
 
 	// Initial system prompt
 	SystemPrompt string

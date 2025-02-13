@@ -1,4 +1,4 @@
-package defaultagent
+package agent
 
 import (
 	"context"
@@ -6,23 +6,21 @@ import (
 	"fmt"
 
 	"github.com/agent-api/core"
-	"github.com/agent-api/core/agent"
-	"github.com/agent-api/core/message"
-	"github.com/agent-api/core/tool"
+	"github.com/agent-api/core/types"
 )
 
 // DefaultAgent represents a basic AI agent with its configuration and state
 type DefaultAgent struct {
 	provider core.Provider
 	tools    ToolMap
-	memory   []message.Message
-	config   *agent.AgentConfig
+	memory   []types.Message
+	config   *NewAgentConfig
 }
 
-type ToolMap map[string]tool.Tool
+type ToolMap map[string]types.Tool
 
 // NewAgent creates a new agent with the given provider
-func NewAgent(config *agent.AgentConfig) *DefaultAgent {
+func NewAgent(config *NewAgentConfig) *DefaultAgent {
 	if config.MaxSteps == 0 {
 		// set a sane default max steps
 		config.MaxSteps = 5
@@ -30,20 +28,20 @@ func NewAgent(config *agent.AgentConfig) *DefaultAgent {
 
 	return &DefaultAgent{
 		provider: config.Provider,
-		tools:    make(map[string]tool.Tool),
-		memory:   make([]message.Message, 0),
+		tools:    make(map[string]types.Tool),
+		memory:   make([]types.Message, 0),
 		config:   config,
 	}
 }
 
 // Run implements the main agent loop
-func (a *DefaultAgent) Run(ctx context.Context, input string, stopCondition agent.StopCondition) ([]*agent.AgentStep, error) {
-	var steps []*agent.AgentStep
+func (a *DefaultAgent) Run(ctx context.Context, input string, stopCondition types.AgentStopCondition) ([]*types.AgentStep, error) {
+	var steps []*types.AgentStep
 
-	currentStep := &agent.AgentStep{
+	currentStep := &types.AgentStep{
 		ID: "1",
-		Message: &message.Message{
-			Role:       message.UserMessageRole,
+		Message: &types.Message{
+			Role:       types.UserMessageRole,
 			Content:    input,
 			ToolCalls:  nil,
 			ToolResult: nil,
@@ -57,7 +55,7 @@ func (a *DefaultAgent) Run(ctx context.Context, input string, stopCondition agen
 	for {
 		fmt.Printf("Current message: %v\n", currentStep.Message)
 		respMessage, err := a.SendMessage(ctx, *currentStep.Message)
-		respStep := &agent.AgentStep{
+		respStep := &types.AgentStep{
 			ID:      "2",
 			Message: respMessage,
 			Error:   err,
@@ -90,13 +88,13 @@ func (a *DefaultAgent) Run(ctx context.Context, input string, stopCondition agen
 		if len(respStep.Message.ToolCalls) > 0 {
 			toolMessage, err := a.CallTool(ctx, respStep.Message.ToolCalls[0])
 			fmt.Printf("%v\n", toolMessage)
-			currentStep = &agent.AgentStep{
+			currentStep = &types.AgentStep{
 				ID:      "3",
 				Message: toolMessage,
 				Error:   err,
 			}
 		} else {
-			currentStep = &agent.AgentStep{
+			currentStep = &types.AgentStep{
 				ID:      "4",
 				Message: respMessage,
 				Error:   err,
@@ -106,18 +104,18 @@ func (a *DefaultAgent) Run(ctx context.Context, input string, stopCondition agen
 }
 
 // SendMessage sends a message to the agent and gets a response
-func (a *DefaultAgent) SendMessage(ctx context.Context, m message.Message) (*message.Message, error) {
+func (a *DefaultAgent) SendMessage(ctx context.Context, m types.Message) (*types.Message, error) {
 	a.memory = append(a.memory, m)
 
-	var response *message.Message
+	var response *types.Message
 	var err error
 
-	toolSlice := make([]tool.Tool, 0, len(a.tools))
+	toolSlice := make([]types.Tool, 0, len(a.tools))
 	for _, tool := range a.tools {
 		toolSlice = append(toolSlice, tool)
 	}
 
-	genOpts := &core.GenerateOptions{
+	genOpts := &types.GenerateOptions{
 		Messages: a.memory,
 		Tools:    toolSlice,
 	}
@@ -132,9 +130,9 @@ func (a *DefaultAgent) SendMessage(ctx context.Context, m message.Message) (*mes
 }
 
 // CallTool sends a message to the agent and gets a response
-func (a *DefaultAgent) CallTool(ctx context.Context, tc message.ToolCall) (*message.Message, error) {
+func (a *DefaultAgent) CallTool(ctx context.Context, tc types.ToolCall) (*types.Message, error) {
 	// Find the corresponding tool
-	var toolToCall *tool.Tool
+	var toolToCall *types.Tool
 
 	for _, t := range a.tools {
 		if t.Name == tc.Name {
@@ -148,25 +146,25 @@ func (a *DefaultAgent) CallTool(ctx context.Context, tc message.ToolCall) (*mess
 	}
 
 	// Call the tool
-	result, err := toolToCall.WrappedFunction(ctx, []byte(tc.Arguments))
+	result, err := toolToCall.WrappedToolFunction(ctx, []byte(tc.Arguments))
 	if err != nil {
 		return nil, fmt.Errorf("tool execution failed: %w", err)
 	}
 
 	// Add the tool response to messages
-	return &message.Message{
-		Role:    message.ToolMessageRole,
+	return &types.Message{
+		Role:    types.ToolMessageRole,
 		Content: fmt.Sprintf("%v", result),
 	}, nil
 }
 
 // AddTool adds a tool to the agent's available tools
-func (a *DefaultAgent) AddTool(tool tool.Tool) error {
+func (a *DefaultAgent) AddTool(tool types.Tool) error {
 	if tool.Name == "" {
 		return errors.New("tool must have a name")
 	}
 
-	if tool.WrappedFunction == nil {
+	if tool.WrappedToolFunction == nil {
 		return errors.New("tool must have a function")
 	}
 
@@ -176,7 +174,7 @@ func (a *DefaultAgent) AddTool(tool tool.Tool) error {
 }
 
 // Example stop condition
-func DefaultStopCondition(step *agent.AgentStep) bool {
+func DefaultStopCondition(step *types.AgentStep) bool {
 	// Stop if there's an error
 	if step.Error != nil {
 		return true
