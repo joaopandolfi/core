@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"log/slog"
+
 	"github.com/agent-api/core"
 	"github.com/agent-api/core/types"
 )
@@ -18,4 +20,6 @@ type NewAgentConfig struct {
 
 	// Initial system prompt
 	SystemPrompt string
+
+	Logger *slog.Logger
 }

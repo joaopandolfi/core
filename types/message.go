@@ -24,7 +24,7 @@ type Message struct {
 	Images []string
 
 	// Multiple tool calls
-	ToolCalls []ToolCall
+	ToolCalls []*ToolCall
 
 	// Result from tool execution
 	ToolResult *ToolResult

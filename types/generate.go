@@ -2,10 +2,10 @@ package types
 
 type GenerateOptions struct {
 	// The Messages in a given generation request
-	Messages []Message
+	Messages []*Message
 
 	// The Tools available to an LLM
-	Tools []Tool
+	Tools []*Tool
 
 	// Controls generation randomness (0.0-1.0)
 	Temperature float64

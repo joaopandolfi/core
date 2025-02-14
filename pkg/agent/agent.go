@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/agent-api/core"
 	"github.com/agent-api/core/types"
@@ -13,8 +14,11 @@ import (
 type DefaultAgent struct {
 	provider core.Provider
 	tools    ToolMap
-	memory   []types.Message
-	config   *NewAgentConfig
+	memory   []*types.Message
+
+	maxSteps int
+
+	logger *slog.Logger
 }
 
 type ToolMap map[string]types.Tool
@@ -29,8 +33,9 @@ func NewAgent(config *NewAgentConfig) *DefaultAgent {
 	return &DefaultAgent{
 		provider: config.Provider,
 		tools:    make(map[string]types.Tool),
-		memory:   make([]types.Message, 0),
-		config:   config,
+		memory:   make([]*types.Message, 0),
+		maxSteps: config.MaxSteps,
+		logger:   config.Logger,
 	}
 }
 
@@ -53,8 +58,10 @@ func (a *DefaultAgent) Run(ctx context.Context, input string, stopCondition type
 	steps = append(steps, currentStep)
 
 	for {
-		fmt.Printf("Current message: %v\n", currentStep.Message)
-		respMessage, err := a.SendMessage(ctx, *currentStep.Message)
+		a.logger.Debug("sending message", "message", currentStep.Message)
+		respMessage, err := a.SendMessage(ctx, currentStep.Message)
+
+		a.logger.Debug("response message", "message", respMessage)
 		respStep := &types.AgentStep{
 			ID:      "2",
 			Message: respMessage,
@@ -65,16 +72,15 @@ func (a *DefaultAgent) Run(ctx context.Context, input string, stopCondition type
 			return steps, err
 		}
 
-		fmt.Printf("Resp message: %v\n", respMessage)
-
 		// Check stop condition
 		if stopCondition(respStep) {
+			a.logger.Debug("reached stop condition", "steps", len(steps))
 			return steps, nil
 		}
 
 		// Check max steps
-		if len(steps) >= a.config.MaxSteps {
-			return steps, fmt.Errorf("exceeded maximum steps: %d - %d", len(steps), a.config.MaxSteps)
+		if len(steps) >= a.maxSteps {
+			return steps, fmt.Errorf("exceeded maximum steps: %d - %d", len(steps), a.maxSteps)
 		}
 
 		// 2 "send" scenarios:
@@ -86,8 +92,10 @@ func (a *DefaultAgent) Run(ctx context.Context, input string, stopCondition type
 
 		// Prepare next input based on tool results
 		if len(respStep.Message.ToolCalls) > 0 {
+			a.logger.Debug("calling tool", "tool", respStep.Message.ToolCalls[0].Name)
 			toolMessage, err := a.CallTool(ctx, respStep.Message.ToolCalls[0])
-			fmt.Printf("%v\n", toolMessage)
+
+			a.logger.Debug("tool response message", "message", toolMessage)
 			currentStep = &types.AgentStep{
 				ID:      "3",
 				Message: toolMessage,
@@ -104,15 +112,15 @@ func (a *DefaultAgent) Run(ctx context.Context, input string, stopCondition type
 }
 
 // SendMessage sends a message to the agent and gets a response
-func (a *DefaultAgent) SendMessage(ctx context.Context, m types.Message) (*types.Message, error) {
+func (a *DefaultAgent) SendMessage(ctx context.Context, m *types.Message) (*types.Message, error) {
 	a.memory = append(a.memory, m)
 
 	var response *types.Message
 	var err error
 
-	toolSlice := make([]types.Tool, 0, len(a.tools))
+	toolSlice := make([]*types.Tool, 0, len(a.tools))
 	for _, tool := range a.tools {
-		toolSlice = append(toolSlice, tool)
+		toolSlice = append(toolSlice, &tool)
 	}
 
 	genOpts := &types.GenerateOptions{
@@ -120,17 +128,18 @@ func (a *DefaultAgent) SendMessage(ctx context.Context, m types.Message) (*types
 		Tools:    toolSlice,
 	}
 
+	a.logger.Debug("sending message with generate options", "genOpts", genOpts)
 	response, err = a.provider.Generate(ctx, genOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	a.memory = append(a.memory, *response)
+	a.memory = append(a.memory, response)
 	return response, nil
 }
 
 // CallTool sends a message to the agent and gets a response
-func (a *DefaultAgent) CallTool(ctx context.Context, tc types.ToolCall) (*types.Message, error) {
+func (a *DefaultAgent) CallTool(ctx context.Context, tc *types.ToolCall) (*types.Message, error) {
 	// Find the corresponding tool
 	var toolToCall *types.Tool
 
@@ -155,6 +164,11 @@ func (a *DefaultAgent) CallTool(ctx context.Context, tc types.ToolCall) (*types.
 	return &types.Message{
 		Role:    types.ToolMessageRole,
 		Content: fmt.Sprintf("%v", result),
+		ToolResult: &types.ToolResult{
+			ToolCallID: tc.ID,
+			Content:    result,
+			Error:      "",
+		},
 	}, nil
 }
 
