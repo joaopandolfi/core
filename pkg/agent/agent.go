@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/agent-api/core"
 	"github.com/agent-api/core/types"
@@ -111,6 +112,72 @@ func (a *DefaultAgent) Run(ctx context.Context, input string, stopCondition type
 	}
 }
 
+// RunStream supports a streaming channel from a provider
+func (a *DefaultAgent) RunStream(ctx context.Context, input string, stopCondition types.AgentStopCondition) (<-chan types.AgentStep, <-chan string, <-chan error) {
+	// TODO - need to implement step stream
+	//stepsChan := make(chan *types.AgentStep)
+
+	currentStep := &types.AgentStep{
+		ID: "1",
+		Message: &types.Message{
+			Role:       types.UserMessageRole,
+			Content:    input,
+			ToolCalls:  nil,
+			ToolResult: nil,
+			Metadata:   nil,
+		},
+		Error: nil,
+	}
+
+	a.logger.Debug("adding to chan", "current step", currentStep)
+	//stepsChan <- currentStep
+
+	a.logger.Debug("sending streaming message", "message", currentStep.Message)
+	msgChan, deltaChan, errChan := a.SendMessageStream(ctx, currentStep.Message)
+
+	for {
+		select {
+		case msg, ok := <-msgChan:
+			if !ok {
+				a.logger.Info("stream message channel closed")
+				return nil, nil, nil
+			}
+			if msg != nil {
+				a.logger.Info("received message",
+					"role", msg.Role,
+					"content", msg.Content,
+					"tool_calls", msg.ToolCalls,
+				)
+			}
+
+		case delta, ok := <-deltaChan:
+			if !ok {
+				a.logger.Info("stream delta chan closed")
+				return nil, nil, nil
+			}
+			if delta != "" {
+				print(delta)
+			}
+
+		case err, ok := <-errChan:
+			if !ok {
+				a.logger.Info("stream error chan closed")
+				return nil, nil, nil
+			}
+			if err != nil {
+				panic(err)
+			}
+
+		case <-ctx.Done():
+			return nil, nil, nil
+
+		case <-time.After(30 * time.Second):
+			a.logger.Error("stream timeout")
+			panic("stream timeout")
+		}
+	}
+}
+
 // SendMessage sends a message to the agent and gets a response
 func (a *DefaultAgent) SendMessage(ctx context.Context, m *types.Message) (*types.Message, error) {
 	a.memory = append(a.memory, m)
@@ -136,6 +203,24 @@ func (a *DefaultAgent) SendMessage(ctx context.Context, m *types.Message) (*type
 
 	a.memory = append(a.memory, response)
 	return response, nil
+}
+
+// SendMessage sends a message to the agent and gets a response
+func (a *DefaultAgent) SendMessageStream(ctx context.Context, m *types.Message) (<-chan *types.Message, <-chan string, <-chan error) {
+	a.memory = append(a.memory, m)
+
+	toolSlice := make([]*types.Tool, 0, len(a.tools))
+	for _, tool := range a.tools {
+		toolSlice = append(toolSlice, &tool)
+	}
+
+	genOpts := &types.GenerateOptions{
+		Messages: a.memory,
+		Tools:    toolSlice,
+	}
+
+	a.logger.Debug("sending message with generate options", "genOpts", genOpts)
+	return a.provider.GenerateStream(ctx, genOpts)
 }
 
 // CallTool sends a message to the agent and gets a response

@@ -29,6 +29,9 @@ type Provider interface {
 	// Generate uses the provider to generate a new message given the core.GenerateOptions
 	Generate(ctx context.Context, opts *types.GenerateOptions) (*types.Message, error)
 
-	// Generate uses the provider to stream a new message channel given the core.GenerateOptions
-	GenerateStream(ctx context.Context, opts *types.GenerateOptions) (<-chan *types.Message, <-chan error)
+	// Generate uses the provider to stream messages. It returns:
+	// * a *types.Message channel which should have complete messages to be consumed by providers.
+	// * a string channel which are the streaming deltas from the provider.
+	// * an error channel to surface any errors during streaming execution.j
+	GenerateStream(ctx context.Context, opts *types.GenerateOptions) (<-chan *types.Message, <-chan string, <-chan error)
 }

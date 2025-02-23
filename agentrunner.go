@@ -12,7 +12,7 @@ type AgentRunner interface {
 	Run(ctx context.Context, input string, stopCondition types.AgentStopCondition) ([]types.AgentStep, error)
 
 	// RunStream supports a streaming channel from a provider
-	RunStream(ctx context.Context, input string, stopCondition types.AgentStopCondition) (<-chan types.AgentStep, <-chan error)
+	RunStream(ctx context.Context, input string, stopCondition types.AgentStopCondition) (<-chan types.AgentStep, <-chan string, <-chan error)
 
 	// Step executes a single step of the agent's logic based on a given role
 	Step(ctx context.Context, message types.Message) (*types.AgentStep, error)
