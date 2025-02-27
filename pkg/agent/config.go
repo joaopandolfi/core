@@ -22,4 +22,6 @@ type NewAgentConfig struct {
 	SystemPrompt string
 
 	Logger *slog.Logger
+
+	Memory core.MemoryStorer
 }
