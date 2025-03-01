@@ -7,15 +7,14 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/agent-api/core"
 	inmemory "github.com/agent-api/core/pkg/memory/inmem"
 	"github.com/agent-api/core/types"
 )
 
-// DefaultAgent represents a basic AI agent with its configuration and state
-type DefaultAgent struct {
+// Agent represents a basic AI agent with its configuration and state
+type Agent struct {
 	provider core.Provider
 	tools    ToolMap
 	memory   core.MemoryStorer
@@ -28,7 +27,7 @@ type DefaultAgent struct {
 type ToolMap map[string]types.Tool
 
 // NewAgent creates a new agent with the given provider
-func NewAgent(config *NewAgentConfig) *DefaultAgent {
+func NewAgent(config *NewAgentConfig) *Agent {
 	if config.MaxSteps == 0 {
 		// set a sane default max steps
 		config.MaxSteps = 25
@@ -38,7 +37,7 @@ func NewAgent(config *NewAgentConfig) *DefaultAgent {
 		config.Memory = inmemory.NewInMemoryMemStore()
 	}
 
-	return &DefaultAgent{
+	return &Agent{
 		provider: config.Provider,
 		tools:    make(map[string]types.Tool),
 		memory:   config.Memory,
@@ -48,7 +47,7 @@ func NewAgent(config *NewAgentConfig) *DefaultAgent {
 }
 
 // Run implements the main agent loop
-func (a *DefaultAgent) Run(ctx context.Context, opts ...RunOptionFunc) *types.AgentRunAggregator {
+func (a *Agent) Run(ctx context.Context, opts ...RunOptionFunc) *types.AgentRunAggregator {
 	// Initialize with default options
 	runOpts := &RunOptions{
 		Input:         "Execute given tasks.",
@@ -64,24 +63,23 @@ func (a *DefaultAgent) Run(ctx context.Context, opts ...RunOptionFunc) *types.Ag
 	var id uint32 = 0
 
 	agg := types.NewAgentRunAggregator()
-	messages := []*types.Message{
-		{
-			ID:         id,
-			Role:       types.UserMessageRole,
-			Content:    runOpts.Input,
-			Images:     runOpts.Images,
-			ToolCalls:  nil,
-			ToolResult: nil,
-			Metadata:   nil,
-		},
+	m := &types.Message{
+		ID:         id,
+		Role:       types.UserMessageRole,
+		Content:    runOpts.Input,
+		Images:     runOpts.Images,
+		ToolCalls:  nil,
+		ToolResult: nil,
+		Metadata:   nil,
 	}
-
-	agg.Push(nil, messages...)
+	agg.Push(nil, m)
+	a.memory.Push(m)
 
 	for {
-		a.logger.Debug("sending messages", "messages", messages)
-		respMessage, respErr := a.SendMessages(ctx, agg, messages...)
+		a.logger.Debug("sending messages", "messages", agg.Messages)
+		respMessage, respErr := a.SendMessages(ctx, agg)
 		respMessage.ID = atomic.AddUint32(&id, 1)
+		a.memory.Push(respMessage)
 
 		a.logger.Debug("response message", "message", respMessage)
 		agg.Push(respErr, respMessage)
@@ -103,7 +101,7 @@ func (a *DefaultAgent) Run(ctx context.Context, opts ...RunOptionFunc) *types.Ag
 		}
 
 		// reset messages for next go around
-		messages = []*types.Message{respMessage}
+		//messages = []*types.Message{respMessage}
 
 		// 2 "send" scenarios:
 		//    * "user" message
@@ -116,85 +114,200 @@ func (a *DefaultAgent) Run(ctx context.Context, opts ...RunOptionFunc) *types.Ag
 		if len(respMessage.ToolCalls) > 0 {
 			toolResponses := a.executeToolCallsParallel(ctx, respMessage.ToolCalls, id)
 			agg.Push(nil, toolResponses...)
-
-			// reset the messages to the tool responses
-			messages = toolResponses
+			a.memory.Push(toolResponses...)
 		}
 	}
 }
 
+type StreamRunnerResults struct {
+	AggChan   <-chan types.AgentRunAggregator
+	DeltaChan <-chan string
+	ErrChan   <-chan error
+}
+
 // RunStream supports a streaming channel from a provider
-func (a *DefaultAgent) RunStream(ctx context.Context, input string, stopCondition types.AgentStopCondition) (<-chan types.AgentRunAggregator, <-chan string, <-chan error) {
-	// TODO - need to implement step stream
-	//stepsChan := make(chan *types.AgentStep)
+func (a *Agent) RunStream(ctx context.Context, opts ...RunOptionFunc) *StreamRunnerResults {
+	// Initialize with default options
+	runOpts := &RunOptions{
+		Input:         "Execute given tasks.",
+		StopCondition: DefaultStopCondition,
+		Images:        []*types.Image{},
+	}
 
-	//var err error
+	// Apply all option functions
+	for _, opt := range opts {
+		opt(runOpts)
+	}
 
-	//agg := types.NewAgentMessageAggregator()
+	var id uint32 = 0
+
+	// buffered, non-blocking channels
+	outAggChan := make(chan types.AgentRunAggregator, 10)
+	outDeltaChan := make(chan string, 10)
+	outErrChan := make(chan error, 10)
+
+	result := &StreamRunnerResults{
+		AggChan:   outAggChan,
+		DeltaChan: outDeltaChan,
+		ErrChan:   outErrChan,
+	}
+
+	// init aggregator
+	agg := types.NewAgentRunAggregator()
 	m := &types.Message{
 		Role:       types.UserMessageRole,
-		Content:    input,
+		Content:    runOpts.Input,
+		Images:     runOpts.Images,
 		ToolCalls:  nil,
 		ToolResult: nil,
 		Metadata:   nil,
 	}
+	agg.Push(nil, m)
+	a.memory.Push(m)
 
-	//a.logger.Debug("adding to chan", "current step", currentStep)
-	//stepsChan <- currentStep
+	a.logger.Debug("kicking run streamer")
 
-	a.logger.Debug("sending streaming message", "message", m)
-	msgChan, deltaChan, errChan := a.SendMessageStream(ctx, m)
+	go func() {
+		defer close(outAggChan)
+		defer close(outDeltaChan)
+		defer close(outErrChan)
 
-	for {
+		// Send initial aggregator state (non-blocking)
 		select {
-		case msg, ok := <-msgChan:
-			if !ok {
-				a.logger.Info("stream message channel closed")
-				return nil, nil, nil
-			}
-			if msg != nil {
-				a.logger.Info("received message",
-					"role", msg.Role,
-					"content", msg.Content,
-					"tool_calls", msg.ToolCalls,
-				)
-			}
-
-		case delta, ok := <-deltaChan:
-			if !ok {
-				a.logger.Info("stream delta chan closed")
-				return nil, nil, nil
-			}
-			if delta != "" {
-				print(delta)
-			}
-
-		case err, ok := <-errChan:
-			if !ok {
-				a.logger.Info("stream error chan closed")
-				return nil, nil, nil
-			}
-			if err != nil {
-				panic(err)
-			}
-
-		case <-ctx.Done():
-			return nil, nil, nil
-
-		case <-time.After(30 * time.Second):
-			a.logger.Error("stream timeout")
-			panic("stream timeout")
+		case outAggChan <- *agg:
+		default:
+			// Skip if no one is listening
 		}
-	}
+
+		for {
+			// Get streaming response for current messages
+			msgChan, deltaChan, errChan := a.SendMessageStream(ctx, agg)
+
+			var respMessage *types.Message
+			var respErr error
+
+			for {
+				// escape inner loop if we're all done with this message stream
+				allClosed := msgChan == nil && deltaChan == nil && errChan == nil
+				if allClosed {
+					break
+				}
+
+				select {
+				case msg, ok := <-msgChan:
+					if !ok {
+						a.logger.Debug("send message message chan closed")
+						msgChan = nil
+						continue
+					}
+					if msg != nil {
+						a.logger.Info("received message",
+							"role", msg.Role,
+							"content", msg.Content,
+							"tool_calls", msg.ToolCalls,
+						)
+						respMessage = msg
+						respMessage.ID = atomic.AddUint32(&id, 1)
+					}
+
+				case delta, ok := <-deltaChan:
+					if !ok {
+						a.logger.Debug("send message delta chan closed")
+						deltaChan = nil
+						continue
+					}
+
+					if delta != "" {
+						select {
+						case outDeltaChan <- delta:
+						default:
+							// Skip if no one is listening
+						}
+					}
+
+					// pull errors from the downstream provider error channel.
+				case err, ok := <-errChan:
+					if !ok {
+						a.logger.Debug("send message err chan closed")
+						errChan = nil
+						continue
+					}
+					if err != nil {
+						respErr = err
+						// Forward error to output channel (non-blocking)
+						select {
+						case outErrChan <- err:
+						default:
+							// Skip if no one is listening
+						}
+					}
+
+				case <-ctx.Done():
+					select {
+					case outErrChan <- ctx.Err():
+					default:
+						// Skip if no one is listening
+					}
+
+					return
+				}
+			}
+
+			// If we got a response message, add it to the aggregator
+			if respMessage != nil {
+				agg.Push(respErr, respMessage)
+				a.memory.Push(respMessage)
+				select {
+				case outAggChan <- *agg:
+				default:
+					// Skip if no one is listening
+				}
+			}
+
+			// If there was an error, return
+			if respErr != nil {
+				return
+			}
+
+			// Check stop condition
+			if runOpts.StopCondition(agg) {
+				a.logger.Debug("reached stop condition", "steps", len(agg.Messages))
+				return
+			}
+
+			// Check max steps
+			if len(agg.Messages) >= a.maxSteps {
+				respErr = fmt.Errorf("exceeded maximum steps: %d - %d", len(agg.Messages), a.maxSteps)
+				agg.Err = respErr
+				select {
+				case outErrChan <- respErr:
+				default:
+					// Skip if no one is listening
+				}
+				return
+			}
+
+			// Call tools if tool calls were present
+			if respMessage != nil && len(respMessage.ToolCalls) > 0 {
+				toolResponses := a.executeToolCallsParallel(ctx, respMessage.ToolCalls, id)
+				agg.Push(nil, toolResponses...)
+				a.memory.Push(toolResponses...)
+
+				// Send updated aggregator after tool execution
+				select {
+				case outAggChan <- *agg:
+				default:
+					// Skip if no one is listening
+				}
+			}
+		}
+	}()
+
+	return result
 }
 
 // SendMessage sends a message to the agent and gets a response
-func (a *DefaultAgent) SendMessages(ctx context.Context, agg *types.AgentRunAggregator, m ...*types.Message) (*types.Message, error) {
-	a.memory.Push(m...)
-
-	var response *types.Message
-	var err error
-
+func (a *Agent) SendMessages(ctx context.Context, agg *types.AgentRunAggregator) (*types.Message, error) {
 	toolSlice := make([]*types.Tool, 0, len(a.tools))
 	for _, tool := range a.tools {
 		toolSlice = append(toolSlice, &tool)
@@ -206,26 +319,23 @@ func (a *DefaultAgent) SendMessages(ctx context.Context, agg *types.AgentRunAggr
 	}
 
 	a.logger.Debug("sending message with generate options", "genOpts", genOpts)
-	response, err = a.provider.Generate(ctx, genOpts)
+	response, err := a.provider.Generate(ctx, genOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	a.memory.Push(response)
 	return response, nil
 }
 
 // SendMessage sends a message to the agent and gets a response
-func (a *DefaultAgent) SendMessageStream(ctx context.Context, m *types.Message) (<-chan *types.Message, <-chan string, <-chan error) {
-	a.memory.Push(m)
-
+func (a *Agent) SendMessageStream(ctx context.Context, agg *types.AgentRunAggregator) (<-chan *types.Message, <-chan string, <-chan error) {
 	toolSlice := make([]*types.Tool, 0, len(a.tools))
 	for _, tool := range a.tools {
 		toolSlice = append(toolSlice, &tool)
 	}
 
 	genOpts := &types.GenerateOptions{
-		Messages: a.memory.Dump(),
+		Messages: agg.Messages,
 		Tools:    toolSlice,
 	}
 
@@ -234,7 +344,7 @@ func (a *DefaultAgent) SendMessageStream(ctx context.Context, m *types.Message) 
 }
 
 // CallTool sends a message to the agent and gets a response
-func (a *DefaultAgent) CallTool(ctx context.Context, tc *types.ToolCall) (*types.Message, error) {
+func (a *Agent) CallTool(ctx context.Context, tc *types.ToolCall) (*types.Message, error) {
 	// Find the corresponding tool
 	var toolToCall *types.Tool
 
@@ -270,7 +380,7 @@ func (a *DefaultAgent) CallTool(ctx context.Context, tc *types.ToolCall) (*types
 }
 
 // AddTool adds a tool to the agent's available tools
-func (a *DefaultAgent) AddTool(tool types.Tool) error {
+func (a *Agent) AddTool(tool types.Tool) error {
 	if tool.Name == "" {
 		return errors.New("tool must have a name")
 	}
@@ -302,7 +412,7 @@ func DefaultStopCondition(agg *types.AgentRunAggregator) bool {
 }
 
 // executeToolCallsParallel executes multiple tool calls in parallel using WaitGroup
-func (a *DefaultAgent) executeToolCallsParallel(ctx context.Context, toolCalls []*types.ToolCall, id uint32) []*types.Message {
+func (a *Agent) executeToolCallsParallel(ctx context.Context, toolCalls []*types.ToolCall, id uint32) []*types.Message {
 	var wg sync.WaitGroup
 	responses := make([]*types.Message, len(toolCalls))
 
