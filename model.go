@@ -1,4 +1,4 @@
-package types
+package core
 
 type Model struct {
 	ID        string

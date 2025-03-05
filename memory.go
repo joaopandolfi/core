@@ -1,12 +1,15 @@
 package core
 
-import "github.com/agent-api/core/types"
+type MemoryBackend interface {
+	// Add adds any number of messages to the memory storer backend
+	Add(m ...*Message) error
 
-// Memory interface for different memory implementations
-type MemoryStorer interface {
-	Push(m ...*types.Message)
-	Peek() *types.Message
-	Dump() []*types.Message
+	// GetMaxN gets the backend's last N messages
+	GetMaxN(n int) ([]*Message, error)
 
-	Clear()
+	// Dump gets the backends last dump of messages
+	Dump() ([]*Message, error)
+
+	// Prune
+	Prune()
 }

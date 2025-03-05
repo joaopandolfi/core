@@ -1,4 +1,4 @@
-package types
+package core
 
 type Image struct {
 	MimeType       string

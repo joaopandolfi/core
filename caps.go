@@ -1,4 +1,4 @@
-package types
+package core
 
 // Capabilities represents what features an LLM provider supports
 type Capabilities struct {

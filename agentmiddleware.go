@@ -2,8 +2,6 @@ package core
 
 import (
 	"context"
-
-	"github.com/agent-api/core/types"
 )
 
 // Middleware defines an interface for intercepting and potentially modifying
@@ -18,9 +16,9 @@ type Middleware interface {
 
 	// PreProcess is called before a message is sent to the agent.
 	// It can modify the message or context.
-	PreProcess(ctx context.Context, m *types.Message) (context.Context, *types.Message, error)
+	PreProcess(ctx context.Context, m *Message) (context.Context, *Message, error)
 
 	// PostProcess is called after a response message is received from the agent.
 	// It can modify the response message or context.
-	PostProcess(ctx context.Context, m *types.Message) (context.Context, *types.Message, error)
+	PostProcess(ctx context.Context, m *Message) (context.Context, *Message, error)
 }

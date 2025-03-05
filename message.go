@@ -1,4 +1,4 @@
-package types
+package core
 
 import (
 	"encoding/json"
@@ -37,6 +37,9 @@ type Message struct {
 
 	// Additional context
 	Metadata *Metadata
+
+	// Generally, message errors are recoverable
+	Error error
 }
 
 // For timestamps, source info, etc.

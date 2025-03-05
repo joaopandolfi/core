@@ -1,4 +1,4 @@
-package types
+package core
 
 type GenerateOptions struct {
 	// The Messages in a given generation request

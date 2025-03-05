@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/agent-api/core/types"
+	"github.com/agent-api/core"
 )
 
 type RunOptions struct {
 	Input         string
-	StopCondition types.AgentStopCondition
-	Images        []*types.Image
+	StopCondition core.AgentStopCondition
+	Images        []*core.Image
 	RunErrs       []error
 }
 
@@ -27,7 +27,7 @@ func WithInput(input string) RunOptionFunc {
 }
 
 // WithStopCondition sets the stop condition option
-func WithStopCondition(stopCondition types.AgentStopCondition) RunOptionFunc {
+func WithStopCondition(stopCondition core.AgentStopCondition) RunOptionFunc {
 	return func(opts *RunOptions) {
 		opts.StopCondition = stopCondition
 	}
@@ -49,7 +49,7 @@ func WithImagePath(path string) RunOptionFunc {
 		encoding := base64.StdEncoding.EncodeToString(fileBytes)
 
 		// Add to Images slice
-		opts.Images = append(opts.Images, &types.Image{
+		opts.Images = append(opts.Images, &core.Image{
 			Base64Encoding: encoding,
 			MimeType:       mimeType,
 		})
@@ -58,7 +58,7 @@ func WithImagePath(path string) RunOptionFunc {
 
 func WithImageBase64(encoding string, mimeType string) RunOptionFunc {
 	return func(opts *RunOptions) {
-		opts.Images = append(opts.Images, &types.Image{
+		opts.Images = append(opts.Images, &core.Image{
 			Base64Encoding: encoding,
 			MimeType:       mimeType,
 		})
