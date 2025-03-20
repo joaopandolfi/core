@@ -1,0 +1,71 @@
+package bootstrap
+
+import (
+	"github.com/go-logr/logr"
+
+	"github.com/agent-api/core"
+)
+
+// NewAgentConfig holds configuration for agent initialization
+type NewAgentConfig struct {
+	// The core.Provider the agent will use
+	Provider core.Provider
+
+	// Maximum number of steps before forcing stop
+	MaxSteps int
+
+	// Tools the agent has access to execute with
+	Tools []*core.Tool
+
+	// System prompt
+	SystemPrompt string
+
+	// The provided logr.Logger
+	Logger *logr.Logger
+
+	// The configured memory backend that stores messages across agent runs.
+	Memory core.MemoryBackend
+}
+
+// RunOptionFunc is a function type that modifies RunOptions
+type NewAgentConfigFunc func(*NewAgentConfig)
+
+func WithProvider(provider core.Provider) NewAgentConfigFunc {
+	return func(conf *NewAgentConfig) {
+		conf.Provider = provider
+	}
+}
+
+func WithMaxSteps(steps int) NewAgentConfigFunc {
+	return func(conf *NewAgentConfig) {
+		conf.MaxSteps = steps
+	}
+}
+
+func WithTools(tool ...*core.Tool) NewAgentConfigFunc {
+	return func(conf *NewAgentConfig) {
+		if conf.Tools == nil {
+			conf.Tools = []*core.Tool{}
+		}
+
+		conf.Tools = append(conf.Tools, tool...)
+	}
+}
+
+func WithSystemPrompt(prompt string) NewAgentConfigFunc {
+	return func(conf *NewAgentConfig) {
+		conf.SystemPrompt = prompt
+	}
+}
+
+func WithLogger(l *logr.Logger) NewAgentConfigFunc {
+	return func(conf *NewAgentConfig) {
+		conf.Logger = l
+	}
+}
+
+func WithMemory(m core.MemoryBackend) NewAgentConfigFunc {
+	return func(conf *NewAgentConfig) {
+		conf.Memory = m
+	}
+}

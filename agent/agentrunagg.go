@@ -1,21 +1,23 @@
-package core
+package agent
+
+import "github.com/agent-api/core"
 
 // AgentRunAggregator represents a single step in an agent's execution
 type AgentRunAggregator struct {
-	Messages []*Message
+	Messages []*core.Message
 }
 
 func NewAgentRunAggregator() *AgentRunAggregator {
 	return &AgentRunAggregator{
-		Messages: []*Message{},
+		Messages: []*core.Message{},
 	}
 }
 
-func (ama *AgentRunAggregator) Push(m ...*Message) {
+func (ama *AgentRunAggregator) Push(m ...*core.Message) {
 	ama.Messages = append(ama.Messages, m...)
 }
 
-func (ama *AgentRunAggregator) Pop() *Message {
+func (ama *AgentRunAggregator) Pop() *core.Message {
 	if len(ama.Messages) == 0 {
 		return nil
 	}

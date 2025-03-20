@@ -11,7 +11,7 @@ import (
 
 type RunOptions struct {
 	Input         string
-	StopCondition core.AgentStopCondition
+	StopCondition AgentStopCondition
 	Images        []*core.Image
 	RunErrs       []error
 }
@@ -27,7 +27,7 @@ func WithInput(input string) RunOptionFunc {
 }
 
 // WithStopCondition sets the stop condition option
-func WithStopCondition(stopCondition core.AgentStopCondition) RunOptionFunc {
+func WithStopCondition(stopCondition AgentStopCondition) RunOptionFunc {
 	return func(opts *RunOptions) {
 		opts.StopCondition = stopCondition
 	}

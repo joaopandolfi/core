@@ -4,57 +4,86 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
 	"sync"
 	"sync/atomic"
 
 	"github.com/go-logr/logr"
 
 	"github.com/agent-api/core"
+	"github.com/agent-api/core/agent/bootstrap"
 	"github.com/agent-api/core/memory/array"
 )
 
 // Agent represents a basic AI agent with its configuration and state
 type Agent struct {
-	mem core.MemoryBackend
-
+	// interfaces
+	mem      core.MemoryBackend
 	provider core.Provider
-	tools    ToolMap
+
+	tools ToolMap
 
 	maxSteps int
 
 	logger *logr.Logger
-
-	sessionNodeID string
 }
 
-type ToolMap map[string]core.Tool
-
 // NewAgent creates a new agent with the given provider
-func NewAgent(config *NewAgentConfig) *Agent {
-	// TODO - implement opts for range func
-
-	if config.MaxSteps == 0 {
-		// set a sane default max steps
-		config.MaxSteps = 25
+func NewAgent(opts ...bootstrap.NewAgentConfigFunc) (*Agent, error) {
+	conf := &bootstrap.NewAgentConfig{
+		Provider:     nil,
+		MaxSteps:     25,
+		Tools:        []*core.Tool{},
+		SystemPrompt: "You are a helpful assistant",
+		Logger:       nil,
+		Memory:       nil,
 	}
 
-	if config.Memory == nil {
-		config.Memory = array.NewArrayMemoryBackend()
+	// Apply all option functions
+	for _, opt := range opts {
+		opt(conf)
+	}
+
+	// no provider set, return err
+	if conf.Provider == nil {
+		return nil, fmt.Errorf("no provider set")
+	}
+
+	// set a default logger if non provided
+	if conf.Logger == nil {
+		slogOpts := slog.HandlerOptions{
+			AddSource: true,
+			Level:     slog.Level(-1),
+		}
+		handler := slog.NewTextHandler(os.Stderr, &slogOpts)
+		l := logr.FromSlogHandler(handler)
+		conf.Logger = &l
+	}
+
+	// set the default memory if non provided
+	if conf.Memory == nil {
+		conf.Memory = array.NewArrayMemoryBackend()
 	}
 
 	agent := &Agent{
-		provider: config.Provider,
-		tools:    make(map[string]core.Tool),
-		mem:      config.Memory,
-		maxSteps: config.MaxSteps,
-		logger:   config.Logger,
+		provider: conf.Provider,
+		tools:    make(map[string]*core.Tool),
+		mem:      conf.Memory,
+		maxSteps: conf.MaxSteps,
+		logger:   conf.Logger,
 	}
 
-	return agent
+	// set tools
+	for _, tool := range conf.Tools {
+		agent.tools[tool.Name] = tool
+	}
+
+	return agent, nil
 }
 
 // Run implements the main agent loop
-func (a *Agent) Run(ctx context.Context, opts ...RunOptionFunc) (*core.AgentRunAggregator, error) {
+func (a *Agent) Run(ctx context.Context, opts ...RunOptionFunc) (*AgentRunAggregator, error) {
 	// Initialize with default options
 	runOpts := &RunOptions{
 		Input:         "Execute given tasks.",
@@ -69,7 +98,7 @@ func (a *Agent) Run(ctx context.Context, opts ...RunOptionFunc) (*core.AgentRunA
 
 	var id uint32 = 0
 
-	agg := core.NewAgentRunAggregator()
+	agg := NewAgentRunAggregator()
 	m := &core.Message{
 		ID:         id,
 		Role:       core.UserMessageRole,
@@ -139,7 +168,7 @@ func (a *Agent) Run(ctx context.Context, opts ...RunOptionFunc) (*core.AgentRunA
 }
 
 type StreamRunnerResults struct {
-	AggChan   <-chan core.AgentRunAggregator
+	AggChan   <-chan AgentRunAggregator
 	DeltaChan <-chan string
 	ErrChan   <-chan error
 }
@@ -161,7 +190,7 @@ func (a *Agent) RunStream(ctx context.Context, opts ...RunOptionFunc) *StreamRun
 	var id uint32 = 0
 
 	// buffered, non-blocking channels
-	outAggChan := make(chan core.AgentRunAggregator, 10)
+	outAggChan := make(chan AgentRunAggregator, 10)
 	outDeltaChan := make(chan string, 10)
 	outErrChan := make(chan error, 10)
 
@@ -172,7 +201,7 @@ func (a *Agent) RunStream(ctx context.Context, opts ...RunOptionFunc) *StreamRun
 	}
 
 	// init aggregator
-	agg := core.NewAgentRunAggregator()
+	agg := NewAgentRunAggregator()
 	m := &core.Message{
 		Role:       core.UserMessageRole,
 		Content:    runOpts.Input,
@@ -182,7 +211,11 @@ func (a *Agent) RunStream(ctx context.Context, opts ...RunOptionFunc) *StreamRun
 		Metadata:   nil,
 	}
 	agg.Push(nil, m)
-	//a.memoryGraph.Push(m)
+
+	err := a.mem.Add(m)
+	if err != nil {
+		panic(err)
+	}
 
 	a.logger.V(1).Info("kicking run streamer")
 
@@ -200,7 +233,13 @@ func (a *Agent) RunStream(ctx context.Context, opts ...RunOptionFunc) *StreamRun
 
 		for {
 			// Get streaming response for current messages
-			msgChan, deltaChan, errChan := a.SendMessageStream(ctx, agg.Messages)
+
+			messages, err := a.mem.GetMaxN(10)
+			if err != nil {
+				panic(err)
+			}
+
+			msgChan, deltaChan, errChan := a.SendMessageStream(ctx, messages)
 
 			var respMessage *core.Message
 			var respErr error
@@ -275,7 +314,8 @@ func (a *Agent) RunStream(ctx context.Context, opts ...RunOptionFunc) *StreamRun
 			// If we got a response message, add it to the aggregator
 			if respMessage != nil {
 				agg.Push(respMessage)
-				//a.memoryGraph.Push(respMessage)
+				a.mem.Add(respMessage)
+
 				select {
 				case outAggChan <- *agg:
 				default:
@@ -310,7 +350,7 @@ func (a *Agent) RunStream(ctx context.Context, opts ...RunOptionFunc) *StreamRun
 			if respMessage != nil && len(respMessage.ToolCalls) > 0 {
 				toolResponses := a.executeToolCallsParallel(ctx, respMessage.ToolCalls, id)
 				agg.Push(toolResponses...)
-				//a.memoryGraph.Push(toolResponses...)
+				a.mem.Add(toolResponses...)
 
 				// Send updated aggregator after tool execution
 				select {
@@ -329,7 +369,7 @@ func (a *Agent) RunStream(ctx context.Context, opts ...RunOptionFunc) *StreamRun
 func (a *Agent) SendMessages(ctx context.Context, m []*core.Message) (*core.Message, error) {
 	toolSlice := make([]*core.Tool, 0, len(a.tools))
 	for _, tool := range a.tools {
-		toolSlice = append(toolSlice, &tool)
+		toolSlice = append(toolSlice, tool)
 	}
 
 	genOpts := &core.GenerateOptions{
@@ -350,7 +390,7 @@ func (a *Agent) SendMessages(ctx context.Context, m []*core.Message) (*core.Mess
 func (a *Agent) SendMessageStream(ctx context.Context, m []*core.Message) (<-chan *core.Message, <-chan string, <-chan error) {
 	toolSlice := make([]*core.Tool, 0, len(a.tools))
 	for _, tool := range a.tools {
-		toolSlice = append(toolSlice, &tool)
+		toolSlice = append(toolSlice, tool)
 	}
 
 	genOpts := &core.GenerateOptions{
@@ -369,7 +409,7 @@ func (a *Agent) CallTool(ctx context.Context, tc *core.ToolCall) (*core.Message,
 
 	for _, t := range a.tools {
 		if t.Name == tc.Name {
-			toolToCall = &t
+			toolToCall = t
 			break
 		}
 	}
@@ -399,7 +439,7 @@ func (a *Agent) CallTool(ctx context.Context, tc *core.ToolCall) (*core.Message,
 }
 
 // AddTool adds a tool to the agent's available tools
-func (a *Agent) AddTool(tool core.Tool) error {
+func (a *Agent) AddTool(tool *core.Tool) error {
 	if tool.Name == "" {
 		return errors.New("tool must have a name")
 	}
@@ -414,7 +454,7 @@ func (a *Agent) AddTool(tool core.Tool) error {
 }
 
 // Example stop condition
-func DefaultStopCondition(agg *core.AgentRunAggregator) bool {
+func DefaultStopCondition(agg *AgentRunAggregator) bool {
 	// Stop if no tool calls were made and we got a response
 	if len(agg.Messages) != 0 {
 		if len(agg.Messages[len(agg.Messages)-1].ToolCalls) == 0 && len(agg.Messages[len(agg.Messages)-1].Content) != 0 {

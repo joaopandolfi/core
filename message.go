@@ -14,7 +14,8 @@ const (
 	ToolMessageRole      MessageRole = "tool"
 )
 
-// Message represents a single message in a conversation with multimodal support
+// Message represents a single message in a LLM conversation flow with multimodal
+// support.
 type Message struct {
 	// ID is the incrementing internal integer identifier
 	ID uint32
@@ -68,8 +69,8 @@ type ToolResult struct {
 	// Reference to original call
 	ToolCallID string
 
-	// Structured result
-	Content interface{}
+	// Structured result (usually JSON)
+	Content any
 
 	Error string
 }
