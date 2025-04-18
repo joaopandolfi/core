@@ -21,6 +21,7 @@ type Agent struct {
 	// interfaces
 	mem      core.MemoryBackend
 	provider core.Provider
+	vecStore core.VectorStorer
 
 	tools ToolMap
 
@@ -69,6 +70,7 @@ func NewAgent(opts ...bootstrap.NewAgentConfigFunc) (*Agent, error) {
 	agent := &Agent{
 		provider: conf.Provider,
 		tools:    make(map[string]*core.Tool),
+		vecStore: conf.VecStore,
 		mem:      conf.Memory,
 		maxSteps: conf.MaxSteps,
 		logger:   conf.Logger,
@@ -79,7 +81,49 @@ func NewAgent(opts ...bootstrap.NewAgentConfigFunc) (*Agent, error) {
 		agent.tools[tool.Name] = tool
 	}
 
+	if agent.vecStore != nil {
+		agent.addVecStoreTools()
+	}
+
 	return agent, nil
+}
+
+func (a *Agent) addVecStoreTools() {
+	// TODO - this json schema is, unfortunately, not valid for
+	jsonSchema := `{
+      "title": "searchVectorStore",
+      "description": "Searches a connected vector store for relevant and related content",
+      "type": "object",
+      "properties": {
+        "Query": {
+          "description": "The query to use on the vector store",
+          "type": "string"
+        },
+        "Limit": {
+          "description": "The limit of returned content",
+          "type": "number"
+        }
+      },
+      "required": [
+        "Query"
+      ]
+    }`
+
+	// Register the vector searching functionality
+	wrappedSearch, err := core.WrapToolFunction(a.vecStore.Search)
+	if err != nil {
+		panic(err)
+	}
+
+	err = a.AddTool(&core.Tool{
+		Name:                "searchVectorStore",
+		Description:         "Searches the connected vector store for similar, related content",
+		WrappedToolFunction: wrappedSearch,
+		JSONSchema:          []byte(jsonSchema),
+	})
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Run implements the main agent loop

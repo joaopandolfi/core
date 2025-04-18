@@ -17,6 +17,9 @@ type NewAgentConfig struct {
 	// Tools the agent has access to execute with
 	Tools []*core.Tool
 
+	// VecStore is the vector store configured for the agent
+	VecStore core.VectorStorer
+
 	// System prompt
 	SystemPrompt string
 
@@ -49,6 +52,12 @@ func WithTools(tool ...*core.Tool) NewAgentConfigFunc {
 		}
 
 		conf.Tools = append(conf.Tools, tool...)
+	}
+}
+
+func WithVectorStore(vecStore core.VectorStorer) NewAgentConfigFunc {
+	return func(conf *NewAgentConfig) {
+		conf.VecStore = vecStore
 	}
 }
 
