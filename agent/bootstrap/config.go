@@ -3,7 +3,7 @@ package bootstrap
 import (
 	"github.com/go-logr/logr"
 
-	"github.com/agent-api/core"
+	"github.com/joaopandolfi/core"
 )
 
 // NewAgentConfig holds configuration for agent initialization

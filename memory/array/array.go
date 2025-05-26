@@ -1,6 +1,6 @@
 package array
 
-import "github.com/agent-api/core"
+import "github.com/joaopandolfi/core"
 
 // ArrayMemoryBackend implements core.MemoryBackend
 // with a simple, "in-memory" array of messages. This memory backend more or less

@@ -11,9 +11,9 @@ import (
 
 	"github.com/go-logr/logr"
 
-	"github.com/agent-api/core"
-	"github.com/agent-api/core/agent/bootstrap"
-	"github.com/agent-api/core/memory/array"
+	"github.com/joaopandolfi/core"
+	"github.com/joaopandolfi/core/agent/bootstrap"
+	"github.com/joaopandolfi/core/memory/array"
 )
 
 // Agent represents a basic AI agent with its configuration and state

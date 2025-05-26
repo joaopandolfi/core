@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/agent-api/core"
+import "github.com/joaopandolfi/core"
 
 // RegisterMiddleware adds a middleware to the processing chain
 func (a *Agent) RegisterMiddleware(m *core.Middleware) error {

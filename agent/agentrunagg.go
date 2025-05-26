@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/agent-api/core"
+import "github.com/joaopandolfi/core"
 
 // AgentRunAggregator represents a single step in an agent's execution
 type AgentRunAggregator struct {

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/agent-api/core"
+	"github.com/joaopandolfi/core"
 )
 
 type RunOptions struct {

@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/agent-api/core"
+import "github.com/joaopandolfi/core"
 
 type ToolMap map[string]*core.Tool
 

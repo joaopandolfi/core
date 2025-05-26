@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 
-	"github.com/agent-api/core"
+	"github.com/joaopandolfi/core"
 )
 
 // Step executes a single step of the agent's logic based on a given role
