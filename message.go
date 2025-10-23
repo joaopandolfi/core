@@ -20,6 +20,9 @@ type Message struct {
 	// ID is the incrementing internal integer identifier
 	ID uint32
 
+	// Used to idenfify User on memory
+	UserID string
+
 	// The role of the message sender
 	Role MessageRole
 
@@ -43,7 +46,7 @@ type Message struct {
 	Error error
 }
 
-// For timestamps, source info, etc.
+// Metadata For timestamps, source info, etc.
 type Metadata struct {
 	Timestamp time.Time
 	Source    string

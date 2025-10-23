@@ -52,14 +52,25 @@ func (a *Agent) ListMiddleware() []core.Middleware {
 	return result
 }
 
-func (a *Agent) PreProcessMessage(m *core.Message) error {
+func (a *Agent) PreProcessMessage(ctx context.Context, m *core.Message) error {
 	orderedMiddleware := a.ListMiddleware()
 	for _, md := range orderedMiddleware {
-		md.PreProcess(context.Background(), m)
+		err := md.PreProcess(ctx, m)
+		if err != nil {
+			return fmt.Errorf("pre processing message on middleware %s: %w", md.Name(), err)
+		}
 	}
 	return nil
 }
 
-func (a *Agent) PosProcessMessage(m *core.Message) error {
+func (a *Agent) PosProcessMessage(ctx context.Context, m *core.Message) error {
+	orderedMiddleware := a.ListMiddleware()
+	for _, md := range orderedMiddleware {
+		err := md.PostProcess(ctx, m)
+		if err != nil {
+			return fmt.Errorf("pos processing message on middleware %s: %w", md.Name(), err)
+		}
+	}
+
 	return nil
 }

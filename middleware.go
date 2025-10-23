@@ -21,9 +21,9 @@ type Middleware interface {
 
 	// PreProcess is called before a message is sent to the agent.
 	// It can modify the calling message or context.
-	PreProcess(ctx context.Context, m *Message) (context.Context, *Message, error)
+	PreProcess(ctx context.Context, m *Message) error
 
 	// PostProcess is called after a response message is received from the agent.
 	// It can modify the response message or context.
-	PostProcess(ctx context.Context, m *Message) (context.Context, *Message, error)
+	PostProcess(ctx context.Context, m *Message) error
 }

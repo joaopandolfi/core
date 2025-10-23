@@ -183,10 +183,19 @@ func (a *Agent) Run(ctx context.Context, opts ...RunOptionFunc) (*AgentRunAggreg
 		// Implements the interception of middlewares
 
 		// Middleware -> Pre processing
+		err = a.PreProcessMessage(ctx, m)
+		if err != nil {
+			a.logger.Error(err, "preprocessing message", m)
+		}
 
+		// SENDING MESSAGE TO AI PROVIDER
 		respMessage, respErr := a.SendMessages(ctx, messages)
 
 		// Middleware -> Post processing
+		err = a.PosProcessMessage(ctx, m)
+		if err != nil {
+			a.logger.Error(err, "posprocessing message", m)
+		}
 
 		agg.Push(respMessage)
 		if respErr != nil {
