@@ -25,7 +25,7 @@ type Tool struct {
 	//
 	// WrappedToolFunction should have 2 returns: an interface and an error. The interface
 	// may be anything defined by the wrapped function (a struct, a string, a number, etc.).
-	WrappedToolFunction func(ctx context.Context, args []byte) (interface{}, error)
+	WrappedToolFunction func(ctx context.Context, args []byte) (any, error)
 
 	// JSONSchema is the raw JSON schema data as a byte slice that will be provided
 	// to a tool calling LLM for argument validation.
@@ -35,7 +35,7 @@ type Tool struct {
 // WrapToolFunction dynamically, at runtime, converts the input function to a "WrappedToolFunction"
 // that can be used as part of Tool.WrappedToolFunction - i.e., a function of type:
 // func(context.Context []byte) (interface{}, error)
-func WrapToolFunction(fn interface{}) (func(context.Context, []byte) (interface{}, error), error) {
+func WrapToolFunction(fn any) (func(context.Context, []byte) (any, error), error) {
 	fnValue := reflect.ValueOf(fn)
 
 	if fnValue.Kind() != reflect.Func {
@@ -56,7 +56,7 @@ func WrapToolFunction(fn interface{}) (func(context.Context, []byte) (interface{
 		panic("second parameter must be a pointer to a struct")
 	}
 
-	return func(ctx context.Context, args []byte) (interface{}, error) {
+	return func(ctx context.Context, args []byte) (any, error) {
 		fmt.Printf("In wrapped func\nargs: %s\n", args)
 		// Create a new instance of the target struct
 		target := reflect.New(argType.Elem()).Interface()
@@ -71,16 +71,19 @@ func WrapToolFunction(fn interface{}) (func(context.Context, []byte) (interface{
 		})
 
 		// Extract return values
-		var result interface{}
-		if !results[0].IsNil() {
-			result = results[0].Interface()
-		}
-
+		var result any
 		var errResult error
-		if !results[1].IsNil() {
-			errResult = results[1].Interface().(error)
-		}
 
+		if len(results) > 0 {
+
+			if !results[0].IsNil() {
+				result = results[0].Interface()
+			}
+
+			if !results[1].IsNil() {
+				errResult = results[1].Interface().(error)
+			}
+		}
 		return result, errResult
 	}, nil
 }

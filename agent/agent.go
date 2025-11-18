@@ -19,9 +19,12 @@ import (
 // Agent represents a basic AI agent with its configuration and state
 type Agent struct {
 	// interfaces
-	mem          core.MemoryBackend
-	provider     core.Provider
-	vecStore     core.VectorStorer
+	mem      core.MemoryBackend
+	provider core.Provider
+	vecStore core.VectorStorer
+
+	middlewares map[string]core.Middleware
+
 	systemPrompt string
 
 	tools ToolMap
@@ -73,6 +76,7 @@ func NewAgent(opts ...bootstrap.NewAgentConfigFunc) (*Agent, error) {
 	agent := &Agent{
 		provider:            conf.Provider,
 		tools:               make(map[string]*core.Tool),
+		middlewares:         make(map[string]core.Middleware),
 		vecStore:            conf.VecStore,
 		mem:                 conf.Memory,
 		maxSteps:            conf.MaxSteps,
@@ -175,7 +179,24 @@ func (a *Agent) Run(ctx context.Context, opts ...RunOptionFunc) (*AgentRunAggreg
 
 		a.logger.V(1).Info("sending messages", "messages", messages)
 
+		// Middleware
+		// Implements the interception of middlewares
+
+		// Middleware -> Pre processing
+		err = a.PreProcessMessage(ctx, m)
+		if err != nil {
+			a.logger.Error(err, "preprocessing message", m)
+		}
+
+		// SENDING MESSAGE TO AI PROVIDER
 		respMessage, respErr := a.SendMessages(ctx, messages)
+
+		// Middleware -> Post processing
+		err = a.PosProcessMessage(ctx, m)
+		if err != nil {
+			a.logger.Error(err, "posprocessing message", m)
+		}
+
 		agg.Push(respMessage)
 		if respErr != nil {
 			return agg, respErr
@@ -553,6 +574,7 @@ func (a *Agent) executeToolCallsParallel(ctx context.Context, toolCalls []*core.
 			defer wg.Done()
 
 			a.logger.V(1).Info("calling tool", "tool", tc.Name, "id", tc.ID)
+			a.logger.V(2).Info("args", tc.Arguments)
 			toolResp, internalErr := a.CallTool(ctx, tc)
 
 			// handle the internal tool calling error

@@ -24,3 +24,7 @@ func (ama *AgentRunAggregator) Pop() *core.Message {
 
 	return ama.Messages[len(ama.Messages)-1]
 }
+
+func (ama *AgentRunAggregator) Flush() {
+	ama.Messages = []*core.Message{}
+}
