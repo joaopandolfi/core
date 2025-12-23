@@ -239,6 +239,10 @@ func (a *Agent) Run(ctx context.Context, opts ...RunOptionFunc) (*AgentRunAggreg
 	}
 }
 
+func (a *Agent) Memory() core.MemoryBackend {
+	return a.mem
+}
+
 func (a *Agent) prepareMemory(id uint32) {
 	messages, err := a.mem.GetMaxN(1)
 	if err != nil {
