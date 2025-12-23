@@ -15,14 +15,18 @@ func NewAmnesicMemory() *AmnesicMemory {
 	}
 }
 
-// Do nothing
+// update whole memory - amnesic behavior
 func (a *AmnesicMemory) Add(m ...*core.Message) error {
+	a.mem = m
 	return nil
 }
 
-// returns a empty array of messages
+// GetMaxN returns the last N number of messages
 func (a *AmnesicMemory) GetMaxN(n int) ([]*core.Message, error) {
-	return a.Dump()
+	if n > len(a.mem) {
+		n = len(a.mem)
+	}
+	return a.mem[:n], nil
 }
 
 // returns a empty array of messages
